@@ -1,7 +1,6 @@
 package com.my.threadpool.monitor;
 
 import com.my.threadpool.autoconfig.ThreadPoolMonitorProperties;
-import com.my.threadpool.executor.DynamicThreadPoolExecutor;
 import com.my.threadpool.handler.MonitorRejectedHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +14,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 动态线程池监控器

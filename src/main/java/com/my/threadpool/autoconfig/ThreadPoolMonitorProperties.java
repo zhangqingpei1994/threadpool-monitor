@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * 控制是否打开线程池监控
  */
 @Data
-@ConfigurationProperties(prefix = "threadpool.monitor")
+@ConfigurationProperties(prefix = "thread.pool.monitor")
 public class ThreadPoolMonitorProperties {
 
     private String applicationName;
@@ -17,7 +17,7 @@ public class ThreadPoolMonitorProperties {
 
     private boolean dynamicModifier = true;
 
-    private int initialDelay = 60;
+    private int initialDelay = 30;
 
-    private int period = 60;
+    private int period = 30;
 }
