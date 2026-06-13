@@ -1,14 +1,11 @@
 package com.my.threadpool.monitor;
 
 import com.my.threadpool.ThreadPoolHolder;
-import com.my.threadpool.autoconfig.ThreadPoolMonitorProperties;
 import com.my.threadpool.handler.MonitorRejectedHandler;
-import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -22,23 +19,11 @@ import java.util.concurrent.ThreadPoolExecutor;
  * @author zhangqingpei
  */
 @Component
-public class DynamicThreadPoolMonitor {
-
+public class DynamicThreadPoolMonitor extends ThreadPoolHolder {
     private static final Logger LOGGER = LoggerFactory.getLogger(DynamicThreadPoolMonitor.class);
-
 
     @Autowired
     private ThreadPoolMonitorProperties monitorProperties;
-
-
-    /**
-     * 注册线程池到监控器（实际委托给 ThreadPoolHolder）
-     */
-    public void register(String name, ThreadPoolTaskExecutor executor) {
-        ThreadPoolHolder.register(name, executor);
-        LOGGER.info("线程池[{}]已注册到监控器", name);
-    }
-
 
 
     /**
@@ -99,40 +84,5 @@ public class DynamicThreadPoolMonitor {
             return ((MonitorRejectedHandler) handler).getRejectedCount();
         }
         return 0;
-    }
-
-    /**
-     * 获取线程池状态快照
-     */
-    public PoolStatusSnapshot getPoolStatusSnapshot(String name) {
-        ThreadPoolExecutor pool = ThreadPoolHolder.get(name);
-        if (pool == null) {
-            return null;
-        }
-        PoolStatusSnapshot snapshot = new PoolStatusSnapshot();
-        snapshot.setPoolName(name);
-        snapshot.setCorePoolSize(pool.getCorePoolSize());
-        snapshot.setMaxPoolSize(pool.getMaximumPoolSize());
-        snapshot.setActiveCount(pool.getActiveCount());
-        snapshot.setCompletedTaskCount(pool.getCompletedTaskCount());
-        snapshot.setQueueSize(pool.getQueue() != null ? pool.getQueue().size() : 0);
-        snapshot.setRejectedCount(getRejectedCount(pool));
-        snapshot.setAllowCoreThreadTimeOut(pool.allowsCoreThreadTimeOut());
-        return snapshot;
-    }
-
-    /**
-     * 线程池状态快照
-     */
-    @Data
-    public static class PoolStatusSnapshot {
-        private String poolName;
-        private int corePoolSize;
-        private int maxPoolSize;
-        private int activeCount;
-        private long completedTaskCount;
-        private int queueSize;
-        private long rejectedCount;
-        private boolean allowCoreThreadTimeOut;
     }
 }

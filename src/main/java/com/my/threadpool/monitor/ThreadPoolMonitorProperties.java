@@ -1,4 +1,4 @@
-package com.my.threadpool.autoconfig;
+package com.my.threadpool.monitor;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

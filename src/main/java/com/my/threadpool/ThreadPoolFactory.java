@@ -20,7 +20,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Slf4j
 @Component
 public class ThreadPoolFactory {
-
     @Autowired
     private ThreadPoolProperties threadPoolProperties;
 
@@ -91,19 +90,6 @@ public class ThreadPoolFactory {
         return executor;
     }
 
-    /**
-     * 创建线程池（使用配置对象）
-     * @param config 线程池配置
-     * @return ThreadPoolTaskExecutor
-     */
-    public ThreadPoolTaskExecutor createThreadPool(PoolConfig config) {
-        return createThreadPool(config.getPoolName(),
-                config.getCorePoolSize(),
-                config.getMaxPoolSize(),
-                config.getKeepAliveSeconds(),
-                config.getQueueCapacity(),
-                config.isAllowCoreThreadTimeOut());
-    }
 
     /**
      * 销毁线程池
@@ -127,39 +113,4 @@ public class ThreadPoolFactory {
         return ThreadPoolHolder.getTaskExecutor(poolName);
     }
 
-    /**
-     * 线程池配置对象
-     */
-    @Data
-    public static class PoolConfig {
-        /**
-         * 线程池名称
-         */
-        private String poolName;
-
-        /**
-         * 核心线程数
-         */
-        private int corePoolSize = 10;
-
-        /**
-         * 最大线程数
-         */
-        private int maxPoolSize = 20;
-
-        /**
-         * 空闲线程存活时间（秒）
-         */
-        private int keepAliveSeconds = 60;
-
-        /**
-         * 队列容量
-         */
-        private int queueCapacity = 1000;
-
-        /**
-         * 是否允许核心线程超时
-         */
-        private boolean allowCoreThreadTimeOut = false;
-    }
 }

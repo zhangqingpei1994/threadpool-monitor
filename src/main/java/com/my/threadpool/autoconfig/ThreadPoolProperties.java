@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * 线程池配置属性
+ * 线程池默认配置属性
  * @author zhangqingpei
  */
 @ConfigurationProperties(prefix = "thread.pool")
