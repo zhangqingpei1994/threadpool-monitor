@@ -12,11 +12,14 @@ import org.springframework.context.annotation.Configuration;
 import javax.annotation.PostConstruct;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ACM配置读取类
  * 用于动态读取阿里云ACM配置中心的线程池参数
+ * dataId: thread.pool.monitor (固定)
+ * group: 应用名称 (spring.application.name)
  * @author zhangqingpei
  */
 @Configuration
@@ -24,6 +27,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DiamondConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DiamondConfig.class);
+    
+    /**
+     * 固定的 dataId
+     */
+    private static final String DATA_ID = "thread.pool.monitor";
 
     /**
      * 存储各线程池的动态配置 key: 线程池名称, value: 配置
@@ -32,6 +40,9 @@ public class DiamondConfig {
 
     @Autowired
     private ThreadPoolProperties defaultProperties;
+    
+    @Autowired(required = false)
+    private String applicationName = "DEFAULT_GROUP";
 
     /**
      * 配置变更监听器回调
@@ -76,7 +87,7 @@ public class DiamondConfig {
                     properties.put("secretKey", secretKey);
                 }
                 ConfigService.init(properties);
-                LOGGER.info("ACM服务初始化成功");
+                LOGGER.info("ACM服务初始化成功, dataId={}, group={}", DATA_ID, applicationName);
             } else {
                 LOGGER.warn("未配置ACM环境变量(ACM_ENDPOINT, ACM_NAMESPACE), 将使用本地配置");
             }
@@ -91,63 +102,64 @@ public class DiamondConfig {
     public DynamicThreadPoolConfig getConfig(String poolName) {
         return dynamicConfigs.get(poolName);
     }
+    
+    /**
+     * 获取所有已注册的线程池名称
+     */
+    public Set<String> getAllPoolNames() {
+        return dynamicConfigs.keySet();
+    }
 
     /**
-     * 注册或更新线程池配置，并订阅ACM配置变更
+     * 注册或更新线程池配置
      */
     public void registerConfig(String poolName, DynamicThreadPoolConfig config) {
         dynamicConfigs.put(poolName, config);
-        
-        // 订阅ACM配置变更
-        subscribeConfig(poolName);
-        
-        LOGGER.info("线程池[{}]配置已注册/更新: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
+        LOGGER.info("线程池[{}]配置已注册: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
                 poolName, config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
     }
 
     /**
-     * 订阅ACM配置
+     * 订阅ACM配置（只订阅一次，所有线程池配置在同一个 dataId 中）
      */
-    private void subscribeConfig(String poolName) {
+    public void subscribeConfig() {
         try {
-            String dataId = "threadpool." + poolName + ".config";
-            String group = "DEFAULT_GROUP";
-            
             // 添加配置变更监听器
-            ConfigService.addListener(dataId, group, new ConfigChangeListener() {
+            ConfigService.addListener(DATA_ID, applicationName, new ConfigChangeListener() {
                 @Override
                 public void receiveConfigInfo(String configInfo) {
-                    LOGGER.info("线程池[{}]配置发生变更: {}", poolName, configInfo);
-                    parseAndUpdateConfig(poolName, configInfo);
+                    LOGGER.info("ACM配置发生变更: {}", configInfo);
+                    parseAndNotifyAll(configInfo);
                 }
             });
             
             // 立即获取一次配置
-            String currentConfig = ConfigService.getConfig(dataId, group, 3000);
+            String currentConfig = ConfigService.getConfig(DATA_ID, applicationName, 3000);
             if (currentConfig != null && !currentConfig.isEmpty()) {
-                parseAndUpdateConfig(poolName, currentConfig);
+                parseAndNotifyAll(currentConfig);
             }
             
-            LOGGER.info("线程池[{}]已订阅ACM配置, dataId={}, group={}", poolName, dataId, group);
+            LOGGER.info("已订阅ACM配置, dataId={}, group={}", DATA_ID, applicationName);
         } catch (Exception e) {
-            LOGGER.warn("线程池[{}]订阅ACM配置失败, 可能未配置ACM环境: {}", poolName, e.getMessage());
+            LOGGER.warn("订阅ACM配置失败, 可能未配置ACM环境: {}", e.getMessage());
         }
     }
 
     /**
-     * 解析配置并更新
+     * 解析配置并通知所有线程池变更
+     * 配置格式：
+     * orderPool.corePoolSize=10
+     * orderPool.maxPoolSize=20
+     * payPool.corePoolSize=5
+     * payPool.maxPoolSize=15
      */
-    private void parseAndUpdateConfig(String poolName, String configInfo) {
+    private void parseAndNotifyAll(String configInfo) {
         if (configInfo == null || configInfo.isEmpty()) {
             return;
         }
         
         try {
-            DynamicThreadPoolConfig config = dynamicConfigs.get(poolName);
-            if (config == null) {
-                config = new DynamicThreadPoolConfig();
-                dynamicConfigs.put(poolName, config);
-            }
+            Map<String, DynamicThreadPoolConfig> parsedConfigs = new ConcurrentHashMap<>();
             
             String[] lines = configInfo.split("\n");
             for (String line : lines) {
@@ -156,6 +168,7 @@ public class DiamondConfig {
                     continue;
                 }
                 
+                // 格式: poolName.property=value
                 String[] parts = line.split("=");
                 if (parts.length != 2) {
                     continue;
@@ -164,32 +177,68 @@ public class DiamondConfig {
                 String key = parts[0].trim();
                 String value = parts[1].trim();
                 
-                switch (key) {
-                    case "corePoolSize":
-                        config.setCorePoolSize(Integer.parseInt(value));
-                        break;
-                    case "maxPoolSize":
-                        config.setMaxPoolSize(Integer.parseInt(value));
-                        break;
-                    case "keepAliveSeconds":
-                        config.setKeepAliveSeconds(Integer.parseInt(value));
-                        break;
-                    case "queueCapacity":
-                        config.setQueueCapacity(Integer.parseInt(value));
-                        break;
+                // 解析 poolName.property
+                int dotIndex = key.lastIndexOf('.');
+                if (dotIndex <= 0 || dotIndex >= key.length() - 1) {
+                    continue;
+                }
+                
+                String poolName = key.substring(0, dotIndex);
+                String property = key.substring(dotIndex + 1);
+                
+                // 获取或创建该线程池的配置
+                DynamicThreadPoolConfig config = parsedConfigs.computeIfAbsent(poolName, k -> {
+                    DynamicThreadPoolConfig existing = dynamicConfigs.get(k);
+                    return existing != null ? existing : new DynamicThreadPoolConfig();
+                });
+                
+                // 设置属性值
+                setConfigProperty(config, property, value);
+            }
+            
+            // 更新动态配置并通知变更
+            for (Map.Entry<String, DynamicThreadPoolConfig> entry : parsedConfigs.entrySet()) {
+                String poolName = entry.getKey();
+                DynamicThreadPoolConfig newConfig = entry.getValue();
+                
+                // 保存配置
+                dynamicConfigs.put(poolName, newConfig);
+                
+                LOGGER.info("线程池[{}]配置更新: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
+                        poolName, newConfig.getCorePoolSize(), newConfig.getMaxPoolSize(), newConfig.getKeepAliveSeconds());
+                
+                // 通知监听器
+                if (configChangeListener != null) {
+                    configChangeListener.onConfigChange(poolName, newConfig);
                 }
             }
             
-            LOGGER.info("线程池[{}]配置更新成功: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
-                    poolName, config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
-            
-            // 通知监听器
-            if (configChangeListener != null) {
-                configChangeListener.onConfigChange(poolName, config);
-            }
-            
         } catch (Exception e) {
-            LOGGER.error("线程池[{}]配置解析失败: {}", poolName, e.getMessage());
+            LOGGER.error("ACM配置解析失败: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * 设置配置属性值
+     */
+    private void setConfigProperty(DynamicThreadPoolConfig config, String property, String value) {
+        try {
+            switch (property) {
+                case "corePoolSize":
+                    config.setCorePoolSize(Integer.parseInt(value));
+                    break;
+                case "maxPoolSize":
+                    config.setMaxPoolSize(Integer.parseInt(value));
+                    break;
+                case "keepAliveSeconds":
+                    config.setKeepAliveSeconds(Integer.parseInt(value));
+                    break;
+                case "queueCapacity":
+                    config.setQueueCapacity(Integer.parseInt(value));
+                    break;
+            }
+        } catch (NumberFormatException e) {
+            LOGGER.warn("配置值格式错误: {}={}", property, value);
         }
     }
 

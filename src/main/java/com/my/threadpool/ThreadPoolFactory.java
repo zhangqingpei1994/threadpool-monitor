@@ -4,7 +4,6 @@ import com.my.threadpool.autoconfig.ThreadPoolProperties;
 import com.my.threadpool.decorator.ContextCopyingDecorator;
 import com.my.threadpool.handler.MonitorRejectedHandler;
 import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -20,6 +19,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Slf4j
 @Component
 public class ThreadPoolFactory {
+    
     @Autowired
     private ThreadPoolProperties threadPoolProperties;
 
@@ -81,7 +81,7 @@ public class ThreadPoolFactory {
         // 线程预热：提前启动所有核心线程
         executor.getThreadPoolExecutor().prestartAllCoreThreads();
 
-        // 注册到监控器
+        // 注册到监控器（由 ThreadPoolHolder 统一保存）
         dynamicThreadPoolMonitor.register(poolName, executor);
 
         log.info("线程池[{}]创建成功, 核心线程={}, 最大线程={}, 队列容量={}", 
@@ -96,10 +96,10 @@ public class ThreadPoolFactory {
      * @param poolName 线程池名称
      */
     public void destroyThreadPool(String poolName) {
-        ThreadPoolTaskExecutor executor = ThreadPoolHolder.getTaskExecutor(poolName);
+        ThreadPoolExecutor executor = ThreadPoolHolder.get(poolName);
         if (executor != null) {
             executor.shutdown();
-            ThreadPoolHolder.unregister(poolName);
+            dynamicThreadPoolMonitor.unregister(poolName);
             log.info("线程池[{}]已销毁", poolName);
         }
     }
@@ -107,10 +107,10 @@ public class ThreadPoolFactory {
     /**
      * 获取已创建的线程池
      * @param poolName 线程池名称
-     * @return ThreadPoolTaskExecutor
+     * @return ThreadPoolExecutor
      */
-    public ThreadPoolTaskExecutor getThreadPool(String poolName) {
-        return ThreadPoolHolder.getTaskExecutor(poolName);
+    public ThreadPoolExecutor getThreadPool(String poolName) {
+        return ThreadPoolHolder.get(poolName);
     }
 
 }

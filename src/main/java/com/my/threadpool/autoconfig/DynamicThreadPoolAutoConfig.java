@@ -2,10 +2,6 @@ package com.my.threadpool.autoconfig;
 
 import com.my.threadpool.ThreadPoolHolder;
 import com.my.threadpool.ThreadPoolFactory;
-import com.my.threadpool.autoconfig.DiamondConfig;
-import com.my.threadpool.autoconfig.ThreadPoolProperties;
-import com.my.threadpool.decorator.ContextCopyingDecorator;
-import com.my.threadpool.handler.MonitorRejectedHandler;
 import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -37,13 +32,10 @@ public class DynamicThreadPoolAutoConfig {
     private ThreadPoolProperties threadPoolProperties;
 
     @Autowired
-    private DynamicThreadPoolMonitor dynamicThreadPoolMonitor;
-
+    private DiamondConfig diamondConfig;
 
     @Autowired
-    private ApplicationContext applicationContext;
-
-
+    private DynamicThreadPoolMonitor dynamicThreadPoolMonitor;
 
     /**
      * 创建线程池工厂
@@ -55,12 +47,23 @@ public class DynamicThreadPoolAutoConfig {
     }
 
     /**
-     * 设置Diamond配置变更监听器
+     * 设置 Diamond 配置变更监听器
      */
-    private void setupConfigChangeListener(DiamondConfig diamondConfig) {
+    @PostConstruct
+    public void setupConfigChangeListener() {
+        // 注册默认配置
+        DiamondConfig.DynamicThreadPoolConfig defaultConfig = new DiamondConfig.DynamicThreadPoolConfig();
+        defaultConfig.setCorePoolSize(threadPoolProperties.getCorePoolSize());
+        defaultConfig.setMaxPoolSize(threadPoolProperties.getMaxPoolSize());
+        defaultConfig.setKeepAliveSeconds(threadPoolProperties.getKeepAliveSeconds());
+        defaultConfig.setQueueCapacity(threadPoolProperties.getQueueCapacity());
+        
+        diamondConfig.registerConfig("default", defaultConfig);
+        
+        // 设置配置变更回调
         diamondConfig.setConfigChangeListener((poolName, config) -> {
             ThreadPoolExecutor executor = ThreadPoolHolder.get(poolName);
-            if (executor != null ) {
+            if (executor != null) {
                 LOGGER.info("线程池[{}]动态配置变更, 正在更新参数: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
                         poolName, config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
                 
@@ -69,50 +72,34 @@ public class DynamicThreadPoolAutoConfig {
                 executor.setKeepAliveTime(config.getKeepAliveSeconds(), TimeUnit.SECONDS);
             }
         });
+        
+        // 自动注册 Spring 容器中已有的线程池配置
+        autoRegisterExistingExecutors();
+        
+        // 订阅 ACM 配置变更
+        diamondConfig.subscribeConfig();
     }
 
     /**
-     * 自动注册Spring容器中已有的ThreadPoolTaskExecutor
+     * 自动注册 Spring 容器中已有的线程池到 Diamond 配置
      */
-    @PostConstruct
-    public void autoRegisterExistingExecutors() {
-        Map<String, ThreadPoolTaskExecutor> taskExecutors = getTaskExecutors();
-        if (taskExecutors != null && !taskExecutors.isEmpty()) {
-            taskExecutors.forEach(this::autoDecorateExecutor);
-        }
-    }
-
-    /**
-     * 获取所有ThreadPoolTaskExecutor Bean
-     */
-    private Map<String, ThreadPoolTaskExecutor> getTaskExecutors() {
+    private void autoRegisterExistingExecutors() {
         try {
-            return applicationContext.getBeansOfType(ThreadPoolTaskExecutor.class);
+            Map<String, ThreadPoolTaskExecutor> executors = 
+                dynamicThreadPoolMonitor.getApplicationContext().getBeansOfType(ThreadPoolTaskExecutor.class);
+            
+            executors.forEach((name, executor) -> {
+                ThreadPoolExecutor pool = executor.getThreadPoolExecutor();
+                if (pool != null) {
+                    DiamondConfig.DynamicThreadPoolConfig config = new DiamondConfig.DynamicThreadPoolConfig();
+                    config.setCorePoolSize(pool.getCorePoolSize());
+                    config.setMaxPoolSize(pool.getMaximumPoolSize());
+                    config.setKeepAliveSeconds((int) pool.getKeepAliveTime(TimeUnit.SECONDS));
+                    diamondConfig.registerConfig(name, config);
+                }
+            });
         } catch (Exception e) {
-            return null;
+            LOGGER.warn("自动注册线程池配置失败: {}", e.getMessage());
         }
-    }
-
-    /**
-     * 自动装饰已有线程池
-     */
-    private void autoDecorateExecutor(String name, ThreadPoolTaskExecutor executor) {
-        ThreadPoolExecutor originalPool = executor.getThreadPoolExecutor();
-        if (originalPool == null) {
-            return;
-        }
-
-        // 1. 注入上下文传递装饰器
-        executor.setTaskDecorator(new ContextCopyingDecorator());
-
-        // 2. 包装拒绝策略
-        MonitorRejectedHandler handler = new MonitorRejectedHandler(
-                originalPool.getRejectedExecutionHandler());
-        handler.setPoolName(name);
-        originalPool.setRejectedExecutionHandler(handler);
-
-        // 3. 注册到监控管理器
-        dynamicThreadPoolMonitor.register(name, executor);
-
     }
 }
