@@ -42,21 +42,10 @@ public class DynamicThreadPoolAutoConfig {
     @Autowired
     private DynamicThreadPoolMonitor dynamicThreadPoolMonitor;
 
-    @Autowired
-    private ThreadPoolHolder threadPoolHolder;
 
     @Autowired
     private ApplicationContext applicationContext;
 
-
-    /**
-     * 创建Diamond配置
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public DiamondConfig diamondConfig() {
-        return new DiamondConfig();
-    }
 
 
     /**
