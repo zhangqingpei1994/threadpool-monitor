@@ -4,8 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import com.my.threadpool.config.DiamondConfig;
-import com.my.threadpool.config.ThreadPoolProperties;
+import com.my.threadpool.autoconfig.DiamondConfig;
+import com.my.threadpool.autoconfig.ThreadPoolProperties;
 import com.my.threadpool.handler.MonitorRejectedHandler;
 
 import javax.annotation.PostConstruct;

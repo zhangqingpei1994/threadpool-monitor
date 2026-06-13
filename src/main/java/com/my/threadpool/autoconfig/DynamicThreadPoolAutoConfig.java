@@ -1,10 +1,15 @@
 package com.my.threadpool.autoconfig;
 
 import com.my.threadpool.ThreadPoolHolder;
+import com.my.threadpool.ThreadPoolFactory;
+import com.my.threadpool.autoconfig.DiamondConfig;
+import com.my.threadpool.autoconfig.ThreadPoolProperties;
+import com.my.threadpool.decorator.ContextCopyingDecorator;
+import com.my.threadpool.handler.MonitorRejectedHandler;
+import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -12,12 +17,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-
-import com.my.threadpool.config.DiamondConfig;
-import com.my.threadpool.config.ThreadPoolProperties;
-import com.my.threadpool.decorator.ContextCopyingDecorator;
-import com.my.threadpool.handler.MonitorRejectedHandler;
-import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
 
 import javax.annotation.PostConstruct;
 import java.util.Map;
@@ -47,50 +46,12 @@ public class DynamicThreadPoolAutoConfig {
 
 
     /**
-     * 创建默认的动态线程池
+     * 创建线程池工厂
      */
-    @Bean(name = "dynamicTaskExecutor")
-    @ConditionalOnMissingBean(name = "dynamicTaskExecutor")
-    public ThreadPoolTaskExecutor dynamicTaskExecutor(DiamondConfig diamondConfig) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-
-        // 设置基础参数
-        executor.setCorePoolSize(threadPoolProperties.getCorePoolSize());
-        executor.setMaxPoolSize(threadPoolProperties.getMaxPoolSize());
-        executor.setKeepAliveSeconds(threadPoolProperties.getKeepAliveSeconds());
-        executor.setQueueCapacity(threadPoolProperties.getQueueCapacity());
-        executor.setThreadNamePrefix(threadPoolProperties.getThreadNamePrefix());
-        executor.setAllowCoreThreadTimeOut(threadPoolProperties.isAllowCoreThreadTimeOut());
-
-        // 设置上下文传递装饰器
-        executor.setTaskDecorator(new ContextCopyingDecorator());
-
-        // 设置拒绝策略
-        MonitorRejectedHandler rejectedHandler = new MonitorRejectedHandler(
-                new ThreadPoolExecutor.CallerRunsPolicy());
-        executor.setRejectedExecutionHandler(rejectedHandler);
-
-        executor.initialize();
-
-        // 线程预热：提前启动所有核心线程
-        executor.getThreadPoolExecutor().prestartAllCoreThreads();
-
-
-        // 注册到监控器
-        dynamicThreadPoolMonitor.register("dynamicTaskExecutor", executor);
-
-        // 注册到Diamond配置并订阅变更
-        DiamondConfig.DynamicThreadPoolConfig config = new DiamondConfig.DynamicThreadPoolConfig();
-        config.setCorePoolSize(threadPoolProperties.getCorePoolSize());
-        config.setMaxPoolSize(threadPoolProperties.getMaxPoolSize());
-        config.setKeepAliveSeconds(threadPoolProperties.getKeepAliveSeconds());
-        config.setQueueCapacity(threadPoolProperties.getQueueCapacity());
-        diamondConfig.registerConfig("dynamicTaskExecutor", config);
-
-        // 设置配置变更监听器
-        setupConfigChangeListener(diamondConfig);
-
-        return executor;
+    @Bean
+    @ConditionalOnMissingBean
+    public ThreadPoolFactory threadPoolFactory() {
+        return new ThreadPoolFactory();
     }
 
     /**
@@ -117,11 +78,7 @@ public class DynamicThreadPoolAutoConfig {
     public void autoRegisterExistingExecutors() {
         Map<String, ThreadPoolTaskExecutor> taskExecutors = getTaskExecutors();
         if (taskExecutors != null && !taskExecutors.isEmpty()) {
-            taskExecutors.forEach((name, executor) -> {
-                if (!"dynamicTaskExecutor".equals(name)) {
-                    autoDecorateExecutor(name, executor);
-                }
-            });
+            taskExecutors.forEach(this::autoDecorateExecutor);
         }
     }
 

@@ -1,4 +1,4 @@
-package com.my.threadpool.config;
+package com.my.threadpool.autoconfig;
 
 import com.alibaba.edas.acm.ConfigService;
 import com.alibaba.edas.acm.listener.ConfigChangeListener;
