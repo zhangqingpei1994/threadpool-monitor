@@ -16,17 +16,25 @@ public class ThreadPoolHolder {
     private static volatile Map<String, ThreadPoolExecutor> threadPools = new ConcurrentHashMap<>();
 
     /**
-     * 注册线程池
+     * 注册线程池（ThreadPoolExecutor）
      */
     public static void register(String name, ThreadPoolExecutor executor) {
         threadPools.put(name, executor);
     }
 
     /**
-     * 注册线程池
+     * 注册线程池（ThreadPoolTaskExecutor）
+     */
+    public static void register(String name, ThreadPoolTaskExecutor executor) {
+        threadPools.put(name, executor.getThreadPoolExecutor());
+    }
+
+    /**
+     * 注册线程池（ThreadPoolTaskExecutor，使用线程名前缀作为key）
      */
     public static void register(ThreadPoolTaskExecutor executor) {
-        threadPools.put(executor.getThreadNamePrefix(), executor.getThreadPoolExecutor());
+        String name = executor.getThreadNamePrefix();
+        threadPools.put(name, executor.getThreadPoolExecutor());
     }
 
     /**
@@ -37,18 +45,20 @@ public class ThreadPoolHolder {
     }
 
     /**
-     * 获取线程池
+     * 获取线程池（ThreadPoolExecutor）
      */
     public static ThreadPoolExecutor get(String name) {
         return threadPools.get(name);
     }
 
+
     /**
-     * 获取所有线程池
+     * 获取所有线程池（ThreadPoolExecutor）
      */
     public static Map<String, ThreadPoolExecutor> getAll() {
         return threadPools;
     }
+
 
     /**
      * 清除所有线程池

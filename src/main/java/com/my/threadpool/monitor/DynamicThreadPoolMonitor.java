@@ -1,7 +1,9 @@
 package com.my.threadpool.monitor;
 
+import com.my.threadpool.ThreadPoolHolder;
 import com.my.threadpool.autoconfig.ThreadPoolMonitorProperties;
 import com.my.threadpool.handler.MonitorRejectedHandler;
+import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,15 +11,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 动态线程池监控器
- * 负责管理线程池注册、状态监控、定时打印线程池状态
+ * 负责管理线程池状态监控、定时打印线程池状态
+ * 线程池实例统一由 ThreadPoolHolder 管理
  * @author zhangqingpei
  */
 @Component
@@ -25,82 +26,42 @@ public class DynamicThreadPoolMonitor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DynamicThreadPoolMonitor.class);
 
-    /**
-     * 核心线程数
-     */
-    private volatile int corePoolSize;
-    /**
-     * 最大线程数
-     */
-    private volatile int maxPoolSize;
-    /**
-     * 当前活跃线程数
-     */
-    private volatile int activeCount;
-    /**
-     * 当前排队任务数
-     */
-    private volatile long completedTaskCount;
-
-    private final Map<String, ThreadPoolTaskExecutor> executors = new ConcurrentHashMap<>();
 
     @Autowired
     private ThreadPoolMonitorProperties monitorProperties;
 
-    @PostConstruct
-    public void init() {
-        LOGGER.info("DynamicThreadPoolMonitor 初始化完成, 监控开关: {}, 动态修改: {}", 
-                monitorProperties.isOpenMonitor(), monitorProperties.isDynamicModifier());
-    }
 
     /**
-     * 注册线程池到监控器
+     * 注册线程池到监控器（实际委托给 ThreadPoolHolder）
      */
     public void register(String name, ThreadPoolTaskExecutor executor) {
-        executors.put(name, executor);
+        ThreadPoolHolder.register(name, executor);
         LOGGER.info("线程池[{}]已注册到监控器", name);
     }
 
-    /**
-     * 取消注册线程池
-     */
-    public void unregister(String name) {
-        executors.remove(name);
-        LOGGER.info("线程池[{}]已从监控器移除", name);
-    }
 
-    /**
-     * 获取已注册的线程池
-     */
-    public ThreadPoolTaskExecutor getExecutor(String name) {
-        return executors.get(name);
-    }
 
     /**
      * 定时打印线程池状态
      */
-    @Scheduled(initialDelayString = "${threadpool.monitor.initial-delay:60000}", 
-              fixedDelayString = "${threadpool.monitor.period:60000}")
+    @Scheduled(initialDelayString = "${thread.pool.monitor.initial-delay:60000}",
+              fixedDelayString = "${thread.pool.monitor.period:60000}")
     public void printPoolStatus() {
         if (!monitorProperties.isOpenMonitor()) {
             return;
         }
         
         LOGGER.info("========== 线程池状态监控 ==========");
-        executors.forEach((name, executor) -> {
-            ThreadPoolExecutor pool = executor.getThreadPoolExecutor();
-            if (pool != null) {
-                printExecutorStatus(name, pool);
-            }
-        });
+        Map<String, ThreadPoolExecutor> executors = ThreadPoolHolder.getAll();
+        executors.forEach(this::printExecutorStatus);
         LOGGER.info("===================================");
     }
 
     private void printExecutorStatus(String name, ThreadPoolExecutor pool) {
-        corePoolSize = pool.getCorePoolSize();
-        maxPoolSize = pool.getMaximumPoolSize();
-        activeCount = pool.getActiveCount();
-        completedTaskCount = pool.getCompletedTaskCount();
+        int corePoolSize = pool.getCorePoolSize();
+        int maxPoolSize = pool.getMaximumPoolSize();
+        int activeCount = pool.getActiveCount();
+        long completedTaskCount = pool.getCompletedTaskCount();
 
         // 计算空闲线程数
         int idleThreads = corePoolSize - activeCount;
@@ -144,16 +105,10 @@ public class DynamicThreadPoolMonitor {
      * 获取线程池状态快照
      */
     public PoolStatusSnapshot getPoolStatusSnapshot(String name) {
-        ThreadPoolTaskExecutor executor = executors.get(name);
-        if (executor == null) {
-            return null;
-        }
-
-        ThreadPoolExecutor pool = executor.getThreadPoolExecutor();
+        ThreadPoolExecutor pool = ThreadPoolHolder.get(name);
         if (pool == null) {
             return null;
         }
-
         PoolStatusSnapshot snapshot = new PoolStatusSnapshot();
         snapshot.setPoolName(name);
         snapshot.setCorePoolSize(pool.getCorePoolSize());
@@ -169,6 +124,7 @@ public class DynamicThreadPoolMonitor {
     /**
      * 线程池状态快照
      */
+    @Data
     public static class PoolStatusSnapshot {
         private String poolName;
         private int corePoolSize;
@@ -178,70 +134,5 @@ public class DynamicThreadPoolMonitor {
         private int queueSize;
         private long rejectedCount;
         private boolean allowCoreThreadTimeOut;
-
-        // getters and setters
-        public String getPoolName() {
-            return poolName;
-        }
-
-        public void setPoolName(String poolName) {
-            this.poolName = poolName;
-        }
-
-        public int getCorePoolSize() {
-            return corePoolSize;
-        }
-
-        public void setCorePoolSize(int corePoolSize) {
-            this.corePoolSize = corePoolSize;
-        }
-
-        public int getMaxPoolSize() {
-            return maxPoolSize;
-        }
-
-        public void setMaxPoolSize(int maxPoolSize) {
-            this.maxPoolSize = maxPoolSize;
-        }
-
-        public int getActiveCount() {
-            return activeCount;
-        }
-
-        public void setActiveCount(int activeCount) {
-            this.activeCount = activeCount;
-        }
-
-        public long getCompletedTaskCount() {
-            return completedTaskCount;
-        }
-
-        public void setCompletedTaskCount(long completedTaskCount) {
-            this.completedTaskCount = completedTaskCount;
-        }
-
-        public int getQueueSize() {
-            return queueSize;
-        }
-
-        public void setQueueSize(int queueSize) {
-            this.queueSize = queueSize;
-        }
-
-        public long getRejectedCount() {
-            return rejectedCount;
-        }
-
-        public void setRejectedCount(long rejectedCount) {
-            this.rejectedCount = rejectedCount;
-        }
-
-        public boolean isAllowCoreThreadTimeOut() {
-            return allowCoreThreadTimeOut;
-        }
-
-        public void setAllowCoreThreadTimeOut(boolean allowCoreThreadTimeOut) {
-            this.allowCoreThreadTimeOut = allowCoreThreadTimeOut;
-        }
     }
 }
