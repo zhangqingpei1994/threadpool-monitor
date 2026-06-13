@@ -58,14 +58,6 @@ public class DynamicThreadPoolAutoConfig {
         return new DiamondConfig();
     }
 
-    /**
-     * 创建监控器
-     */
-    @Bean
-    @ConditionalOnMissingBean
-    public DynamicThreadPoolMonitor dynamicThreadPoolMonitor() {
-        return new DynamicThreadPoolMonitor();
-    }
 
     /**
      * 创建默认的动态线程池

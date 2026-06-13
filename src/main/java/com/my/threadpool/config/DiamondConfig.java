@@ -2,6 +2,7 @@ package com.my.threadpool.config;
 
 import com.alibaba.edas.acm.ConfigService;
 import com.alibaba.edas.acm.listener.ConfigChangeListener;
+import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -209,42 +210,11 @@ public class DiamondConfig {
     /**
      * 动态线程池配置
      */
+    @Data
     public static class DynamicThreadPoolConfig {
         private int corePoolSize;
         private int maxPoolSize;
         private int keepAliveSeconds;
         private int queueCapacity;
-
-        public int getCorePoolSize() {
-            return corePoolSize;
-        }
-
-        public void setCorePoolSize(int corePoolSize) {
-            this.corePoolSize = corePoolSize;
-        }
-
-        public int getMaxPoolSize() {
-            return maxPoolSize;
-        }
-
-        public void setMaxPoolSize(int maxPoolSize) {
-            this.maxPoolSize = maxPoolSize;
-        }
-
-        public int getKeepAliveSeconds() {
-            return keepAliveSeconds;
-        }
-
-        public void setKeepAliveSeconds(int keepAliveSeconds) {
-            this.keepAliveSeconds = keepAliveSeconds;
-        }
-
-        public int getQueueCapacity() {
-            return queueCapacity;
-        }
-
-        public void setQueueCapacity(int queueCapacity) {
-            this.queueCapacity = queueCapacity;
-        }
     }
 }
