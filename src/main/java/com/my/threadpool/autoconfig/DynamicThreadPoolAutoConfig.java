@@ -32,9 +32,7 @@ import java.util.concurrent.TimeUnit;
 @EnableConfigurationProperties(ThreadPoolProperties.class)
 @ConditionalOnClass({ThreadPoolExecutor.class, ThreadPoolTaskExecutor.class})
 public class DynamicThreadPoolAutoConfig {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(DynamicThreadPoolAutoConfig.class);
-
 
     @Autowired
     private ThreadPoolProperties threadPoolProperties;
