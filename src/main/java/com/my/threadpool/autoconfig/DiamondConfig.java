@@ -2,6 +2,7 @@ package com.my.threadpool.autoconfig;
 
 import com.alibaba.edas.acm.ConfigService;
 import com.alibaba.edas.acm.listener.ConfigChangeListener;
+import com.my.threadpool.ThreadPoolHolder;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * ACM配置读取类
@@ -40,9 +43,11 @@ public class DiamondConfig {
 
     @Autowired
     private ThreadPoolProperties defaultProperties;
-    
-    @Autowired(required = false)
+
     private String applicationName = "DEFAULT_GROUP";
+
+    @Autowired
+    private ThreadPoolProperties threadPoolProperties;
 
     /**
      * 配置变更监听器回调
@@ -254,6 +259,38 @@ public class DiamondConfig {
      */
     public interface ConfigChangeListenerWrapper {
         void onConfigChange(String poolName, DynamicThreadPoolConfig config);
+    }
+
+    /**
+     * 设置 Diamond 配置变更监听器
+     */
+    @PostConstruct
+    public void setupConfigChangeListener() {
+        // 注册默认配置
+        DiamondConfig.DynamicThreadPoolConfig defaultConfig = new DiamondConfig.DynamicThreadPoolConfig();
+        defaultConfig.setCorePoolSize(threadPoolProperties.getCorePoolSize());
+        defaultConfig.setMaxPoolSize(threadPoolProperties.getMaxPoolSize());
+        defaultConfig.setKeepAliveSeconds(threadPoolProperties.getKeepAliveSeconds());
+        defaultConfig.setQueueCapacity(threadPoolProperties.getQueueCapacity());
+
+        registerConfig("default", defaultConfig);
+
+        // 设置配置变更回调
+        setConfigChangeListener((poolName, config) -> {
+            ThreadPoolExecutor executor = ThreadPoolHolder.get(poolName);
+            if (executor != null) {
+                LOGGER.info("线程池[{}]动态配置变更, 正在更新参数: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
+                        poolName, config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
+
+                executor.setCorePoolSize(config.getCorePoolSize());
+                executor.setMaximumPoolSize(config.getMaxPoolSize());
+                executor.setKeepAliveTime(config.getKeepAliveSeconds(), TimeUnit.SECONDS);
+            }
+        });
+
+
+        // 订阅 ACM 配置变更
+        subscribeConfig();
     }
 
     /**
