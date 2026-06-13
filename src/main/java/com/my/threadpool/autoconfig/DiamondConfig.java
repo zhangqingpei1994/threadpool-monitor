@@ -142,7 +142,7 @@ public class DiamondConfig {
     public DynamicThreadPoolConfig getConfig(String poolName) {
         return dynamicConfigs.get(poolName);
     }
-    
+
     /**
      * 获取所有已注册的线程池名称
      */
@@ -150,15 +150,6 @@ public class DiamondConfig {
         return dynamicConfigs.keySet();
     }
 
-    /**
-     * 注册或更新线程池配置
-     */
-    public void registerConfig(String poolName, DynamicThreadPoolConfig config) {
-        dynamicConfigs.put(poolName, config);
-        LOGGER.info("[{}] 线程池[{}]配置已注册: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
-                applicationName, poolName, 
-                config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
-    }
 
     /**
      * 订阅ACM配置（只订阅一次，所有线程池配置在同一个 dataId 中）
