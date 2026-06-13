@@ -3,7 +3,7 @@ package com.my.threadpool;
 import com.my.threadpool.autoconfig.ThreadPoolProperties;
 import com.my.threadpool.decorator.ContextCopyingDecorator;
 import com.my.threadpool.handler.MonitorRejectedHandler;
-import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
+import com.my.threadpool.monitor.ThreadPoolMonitor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -24,7 +24,7 @@ public class ThreadPoolFactory {
     private ThreadPoolProperties threadPoolProperties;
 
     @Autowired
-    private DynamicThreadPoolMonitor dynamicThreadPoolMonitor;
+    private ThreadPoolMonitor threadPoolMonitor;
 
     /**
      * 使用默认配置创建线程池
@@ -82,7 +82,7 @@ public class ThreadPoolFactory {
         executor.getThreadPoolExecutor().prestartAllCoreThreads();
 
         // 注册到监控器（由 ThreadPoolHolder 统一保存）
-        dynamicThreadPoolMonitor.register(poolName, executor);
+        threadPoolMonitor.register(poolName, executor);
 
         log.info("线程池[{}]创建成功, 核心线程={}, 最大线程={}, 队列容量={}", 
                 poolName, corePoolSize, maxPoolSize, queueCapacity);
@@ -99,7 +99,7 @@ public class ThreadPoolFactory {
         ThreadPoolExecutor executor = ThreadPoolHolder.get(poolName);
         if (executor != null) {
             executor.shutdown();
-            dynamicThreadPoolMonitor.unregister(poolName);
+            threadPoolMonitor.unregister(poolName);
             log.info("线程池[{}]已销毁", poolName);
         }
     }

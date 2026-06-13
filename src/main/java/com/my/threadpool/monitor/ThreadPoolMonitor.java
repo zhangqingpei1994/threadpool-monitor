@@ -23,8 +23,8 @@ import java.util.concurrent.ThreadPoolExecutor;
  * @author zhangqingpei
  */
 @Component
-public class DynamicThreadPoolMonitor {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DynamicThreadPoolMonitor.class);
+public class ThreadPoolMonitor {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ThreadPoolMonitor.class);
     
     private static final String LOCAL_IP = IpUtil.getIpV4Address();
 
