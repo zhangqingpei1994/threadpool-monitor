@@ -22,6 +22,7 @@ import com.my.threadpool.monitor.DynamicThreadPoolMonitor;
 import javax.annotation.PostConstruct;
 import java.util.Map;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 动态线程池自动配置
@@ -42,10 +43,10 @@ public class DynamicThreadPoolAutoConfig {
     private DynamicThreadPoolMonitor dynamicThreadPoolMonitor;
 
     @Autowired
-    private ApplicationContext applicationContext;
+    private ThreadPoolHolder threadPoolHolder;
 
-    @Value("${spring.application.name}")
-    private String applicationName; 
+    @Autowired
+    private ApplicationContext applicationContext;
 
 
     /**
@@ -95,8 +96,6 @@ public class DynamicThreadPoolAutoConfig {
         // 线程预热：提前启动所有核心线程
         executor.getThreadPoolExecutor().prestartAllCoreThreads();
 
-        // 注册到全局持有器
-        ThreadPoolHolder.register("dynamicTaskExecutor", executor.getThreadPoolExecutor());
 
         // 注册到监控器
         dynamicThreadPoolMonitor.register("dynamicTaskExecutor", executor);
@@ -120,14 +119,14 @@ public class DynamicThreadPoolAutoConfig {
      */
     private void setupConfigChangeListener(DiamondConfig diamondConfig) {
         diamondConfig.setConfigChangeListener((poolName, config) -> {
-            ThreadPoolTaskExecutor executor = dynamicThreadPoolMonitor.getExecutor(poolName);
-            if (executor != null && executor.getThreadPoolExecutor() != null) {
+            ThreadPoolExecutor executor = ThreadPoolHolder.get(poolName);
+            if (executor != null ) {
                 LOGGER.info("线程池[{}]动态配置变更, 正在更新参数: corePoolSize={}, maxPoolSize={}, keepAliveSeconds={}",
                         poolName, config.getCorePoolSize(), config.getMaxPoolSize(), config.getKeepAliveSeconds());
                 
                 executor.setCorePoolSize(config.getCorePoolSize());
-                executor.setMaxPoolSize(config.getMaxPoolSize());
-                executor.setKeepAliveSeconds(config.getKeepAliveSeconds());
+                executor.setMaximumPoolSize(config.getMaxPoolSize());
+                executor.setKeepAliveTime(config.getKeepAliveSeconds(), TimeUnit.SECONDS);
             }
         });
     }
@@ -179,7 +178,5 @@ public class DynamicThreadPoolAutoConfig {
         // 3. 注册到监控管理器
         dynamicThreadPoolMonitor.register(name, executor);
 
-        // 4. 注册到全局持有器
-        ThreadPoolHolder.register(name, originalPool);
     }
 }
