@@ -11,9 +11,10 @@
 - 支持多种创建方式：默认配置、自定义参数、配置对象
 
 ### ✅ 动态配置支持
-- 通过 Diamond 配置中心动态修改线程池参数
+- 通过 Diamond/ACM 配置中心动态修改线程池参数
 - 支持动态修改：核心线程数、最大线程数、空闲线程存活时间
 - 配置变更自动生效，无需重启应用
+- 所有线程池配置统一管理在一个 dataId 中
 
 ### ✅ 自动注册监控
 - 自动扫描 Spring 容器中已有的 `ThreadPoolTaskExecutor`
@@ -22,6 +23,7 @@
 ### ✅ 定时状态监控
 - 每60秒自动打印线程池状态
 - 监控指标包括：核心线程数、最大线程数、活跃线程数、空闲线程数、队列任务数、已完成任务数、拒绝任务数
+- 日志输出包含当前机器 IP 地址，便于多机部署时定位
 
 ### ✅ 上下文传递
 - 支持 MDC 上下文传递
@@ -69,7 +71,39 @@ spring:
     name: example-app
 ```
 
-### 3. 使用方式
+### 3. Diamond/ACM 配置
+
+**环境变量配置：**
+
+| 环境变量 | 说明 |
+|---------|------|
+| ACM_ENDPOINT | ACM 服务地址 |
+| ACM_NAMESPACE | ACM 命名空间 |
+| ACM_ACCESS_KEY | ACM 访问密钥（可选） |
+| ACM_SECRET_KEY | ACM 密钥（可选） |
+
+**配置格式（dataId: `thread.pool.monitor`, groupId: `spring.application.name`）：**
+
+```json
+[
+  {
+    "poolName": "orderPool",
+    "corePoolSize": 10,
+    "maxPoolSize": 20,
+    "keepAliveSeconds": 60,
+    "queueCapacity": 1000
+  },
+  {
+    "poolName": "payPool",
+    "corePoolSize": 5,
+    "maxPoolSize": 15,
+    "keepAliveSeconds": 30,
+    "queueCapacity": 500
+  }
+]
+```
+
+### 4. 使用方式
 
 #### 方式一：使用线程池工厂创建（推荐）
 
@@ -85,7 +119,7 @@ ThreadPoolTaskExecutor executor2 = threadPoolFactory.createThreadPool(
     "payExecutor",    // 线程池名称
     5,                // 核心线程数
     10,               // 最大线程数
-    60,               // 空闲存活时间
+    60,               // 空闲存活时间（秒）
     500,              // 队列容量
     false             // 是否允许核心线程超时
 );
@@ -117,25 +151,13 @@ public ThreadPoolTaskExecutor customExecutor() {
 }
 ```
 
-#### 方式三：动态修改配置
-
-通过 Diamond 配置中心修改线程池参数：
-
-**配置格式（dataId: `threadpool.{poolName}.config`）：**
-```properties
-corePoolSize=15
-maxPoolSize=30
-keepAliveSeconds=120
-queueCapacity=2000
-```
-
 ## 监控输出示例
 
 ```
-========== 线程池状态监控 ==========
-线程池[orderExecutor] 状态: 核心线程=10, 最大线程=20, 活跃线程=3, 空闲线程=7, 队列任务数=5, 已完成任务=100, 拒绝任务数=0, allowCoreThreadTimeOut=false
-线程池[customExecutor] 状态: 核心线程=5, 最大线程=10, 活跃线程=2, 空闲线程=3, 队列任务数=0, 已完成任务=50, 拒绝任务数=0, allowCoreThreadTimeOut=false
-===================================
+========== [192.168.1.100] 线程池状态监控 ==========
+[192.168.1.100] 线程池[orderExecutor] 状态: 核心线程=10, 最大线程=20, 活跃线程=3, 空闲线程=7, 队列任务数=5, 已完成任务=100, 拒绝任务数=0, allowCoreThreadTimeOut=false
+[192.168.1.100] 线程池[payExecutor] 状态: 核心线程=5, 最大线程=15, 活跃线程=2, 空闲线程=3, 队列任务数=0, 已完成任务=50, 拒绝任务数=0, allowCoreThreadTimeOut=false
+===================================================
 ```
 
 ## 核心组件
@@ -143,26 +165,31 @@ queueCapacity=2000
 ### 1. ThreadPoolFactory
 - 线程池工厂类，负责创建和管理多个线程池实例
 - 提供多种创建方式，支持自定义配置
+- 创建的线程池自动注册到 `ThreadPoolHolder` 和监控器
 
 ### 2. ThreadPoolHolder
-- 线程池持有器，全局存储所有线程池实例
-- 支持按名称获取线程池
+- 线程池持有器，全局存储所有线程池实例（单例）
+- 支持按名称获取、注册、注销线程池
+- 提供静态方法访问，方便全局调用
 
-### 3. DynamicThreadPoolAutoConfig
-- 自动配置类，负责初始化监控器和工厂
-- 自动扫描并注册 Spring 容器中的线程池
-
-### 4. DynamicThreadPoolMonitor
+### 3. DynamicThreadPoolMonitor
 - 线程池监控器，负责定时打印线程池状态
+- 自动扫描 Spring 容器中的线程池并注册
+- 日志输出包含机器 IP，便于多机部署
 
-### 5. DiamondConfig
-- Diamond 配置读取类，支持配置变更监听
+### 4. DiamondConfig
+- Diamond/ACM 配置读取类，支持配置变更监听
+- **dataId**: `thread.pool.monitor`（固定）
+- **groupId**: `spring.application.name`（应用名称）
+- 配置格式：JSON 数组，支持多个线程池配置
 
-### 6. ContextCopyingDecorator
+### 5. ContextCopyingDecorator
 - 上下文传递装饰器，负责 MDC 上下文的捕获和传递
+- 确保子线程能够继承主线程的 MDC 信息
 
-### 7. MonitorRejectedHandler
+### 6. MonitorRejectedHandler
 - 可监控的拒绝策略，统计被拒绝的任务数量
+- 继承自 `CallerRunsPolicy`，确保任务不丢失
 
 ## 配置参数说明
 
@@ -191,29 +218,63 @@ queueCapacity=2000
 ```
 src/main/java/com/my/threadpool/
 ├── autoconfig/                    # 自动配置
-│   ├── DiamondConfig.java
-│   ├── DynamicThreadPoolAutoConfig.java
-│   ├── ThreadPoolMonitorProperties.java
-│   └── ThreadPoolProperties.java
+│   ├── DiamondConfig.java         # Diamond/ACM 配置读取
+│   ├── ThreadPoolMonitorProperties.java  # 监控配置属性
+│   └── ThreadPoolProperties.java  # 线程池默认配置
 ├── decorator/                     # 装饰器
-│   ├── AlRunnable.java
-│   └── ContextCopyingDecorator.java
+│   ├── AlRunnable.java            # 可追踪的 Runnable
+│   └── ContextCopyingDecorator.java  # 上下文传递装饰器
 ├── handler/                       # 处理器
-│   └── MonitorRejectedHandler.java
+│   └── MonitorRejectedHandler.java  # 可监控的拒绝策略
 ├── monitor/                       # 监控器
-│   └── DynamicThreadPoolMonitor.java
+│   └── DynamicThreadPoolMonitor.java  # 线程池监控器
 ├── util/                          # 工具类
-│   └── IpUtil.java
+│   └── IpUtil.java                # IP 地址工具类
 ├── ThreadPoolFactory.java         # 线程池工厂
 └── ThreadPoolHolder.java          # 线程池持有器
 ```
 
+## 配置变更流程
+
+```
+Diamond/ACM 配置中心
+    ↓
+配置变更推送
+    ↓
+ConfigChangeListener.receiveConfigInfo()
+    ↓
+DiamondConfig.parseAndNotifyAll()
+    ↓
+遍历所有线程池配置
+    ↓
+更新 dynamicConfigs Map
+    ↓
+触发 configChangeListener.onConfigChange()
+    ↓
+ThreadPoolHolder.get(poolName)
+    ↓
+executor.setCorePoolSize() / setMaximumPoolSize() / setKeepAliveTime()
+```
+
 ## 注意事项
 
-1. 若需要使用 Diamond 动态配置功能，请确保已正确配置 Diamond 环境
-2. 自定义线程池需要调用 `initialize()` 方法后才能被自动注册
-3. 监控日志输出间隔可通过 `threadpool.monitor.period` 配置调整
-4. 通过工厂创建的线程池会自动注册到监控器，无需手动注册
+1. **Diamond 配置要求**：
+   - dataId 必须为：`thread.pool.monitor`
+   - groupId 为：`spring.application.name` 的值
+   - 配置格式必须为 JSON 数组
+
+2. **线程池注册**：
+   - 通过 `ThreadPoolFactory` 创建的线程池会自动注册
+   - Spring 容器中的 `ThreadPoolTaskExecutor` Bean 会自动注册
+   - 自定义线程池需要调用 `initialize()` 方法
+
+3. **日志输出**：
+   - 监控日志包含机器 IP 地址
+   - 日志格式：`[IP] 线程池[名称] 状态: ...`
+
+4. **优雅关闭**：
+   - 应用关闭时会自动调用线程池的 `shutdown()` 方法
+   - 确保任务完成后再关闭应用
 
 ## License
 
